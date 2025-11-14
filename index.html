@@ -13,6 +13,9 @@
     />
     <meta name="format-detection" content="telephone=no" />
     <title>Weather App</title>
+
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+
     <style>
       :root {
         --bg: #0b1020;
@@ -208,6 +211,22 @@
         border-color: var(--accent);
         box-shadow: 0 0 10px rgba(77, 163, 255, 0.4);
       }
+
+      /* 🆕 Google user info card */
+      .user-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 12px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .user-info img {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+      }
+
       @media (min-width: 480px) {
         header h1 {
           font-size: 20px;
@@ -230,37 +249,43 @@
             <button id="btnImperial" aria-pressed="false">°F</button>
           </div>
         </header>
-        <div class="controls">
-          <input
-            id="cityInput"
-            type="text"
-            placeholder="Хот/суурин нэр..."
-            list="presetCities"
-            inputmode="text"
-            autocapitalize="words"
-            autocomplete="on"
-            autocorrect="off"
-            spellcheck="false"
-            enterkeyhint="search"
-          />
-          <datalist id="presetCities">
-            <option value="Ulaanbaatar"></option>
-            <option value="Darkhan"></option>
-            <option value="Erdenet"></option>
-            <option value="Khentii"></option>
-            <option value="Zuunmod"></option>
-            <option value="Tokyo"></option>
-            <option value="Seoul"></option>
-            <option value="London"></option>
-            <option value="New York"></option>
-          </datalist>
-          <div class="row">
-            <button id="btnSearch">Хайх</button>
-            <button id="btnGeo" class="ghost">Миний байршлаар</button>
-          </div>
-        </div>
+
         <div class="content">
+          <!-- 🆕 Google Sign-In section -->
+          <div class="card">
+            <h2 style="margin: 0 0 8px; font-size: 16px">Google нэвтрэлт</h2>
+
+            <!-- Google Sign-In button -->
+            <div
+              id="g_id_onload"
+              data-client_id="505268840576-choj3sajmanf6p3enfhr62mrd96les3r.apps.googleusercontent.com"
+              data-callback="handleCredentialResponse"
+              data-auto_prompt="false"
+            ></div>
+
+            <div
+              class="g_id_signin"
+              data-type="standard"
+              data-size="large"
+              data-theme="outline"
+              data-text="sign_in_with"
+              data-shape="rectangular"
+              data-logo_alignment="left"
+            ></div>
+
+            <!-- User info -->
+            <div id="userCard" class="user-info hidden">
+              <img id="userPicture" alt="User" />
+              <div>
+                <div id="userName" style="font-weight: 600"></div>
+                <div id="userEmail"></div>
+              </div>
+            </div>
+          </div>
+          <!-- 🆕 Google Sign-In section end -->
+
           <div id="status" class="pill">Бэлэн.</div>
+
           <div id="card" class="card hidden">
             <div class="main">
               <div>
@@ -294,11 +319,76 @@
               </div>
             </div>
           </div>
+
+          <div class="controls">
+            <input
+              id="cityInput"
+              type="text"
+              placeholder="Хот/суурин нэр..."
+              list="presetCities"
+              inputmode="text"
+              autocapitalize="words"
+              autocomplete="on"
+              autocorrect="off"
+              spellcheck="false"
+              enterkeyhint="search"
+            />
+            <datalist id="presetCities">
+              <option value="Ulaanbaatar"></option>
+              <option value="Darkhan"></option>
+              <option value="Erdenet"></option>
+              <option value="Khentii"></option>
+              <option value="Zuunmod"></option>
+              <option value="Tokyo"></option>
+              <option value="Seoul"></option>
+              <option value="London"></option>
+              <option value="New York"></option>
+            </datalist>
+            <div class="row">
+              <button id="btnSearch">Хайх</button>
+              <button id="btnGeo" class="ghost">Миний байршлаар</button>
+            </div>
+          </div>
+
           <div class="footer">Өгөгдөл: openweathermap.org</div>
         </div>
       </div>
     </div>
+
     <script>
+      /* 🆕 Google token parse helper */
+      function parseJwt(token) {
+        const base64Url = token.split(".")[1];
+        const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+        const jsonPayload = decodeURIComponent(
+          atob(base64)
+            .split("")
+            .map(function (c) {
+              return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
+            })
+            .join("")
+        );
+        return JSON.parse(jsonPayload);
+      }
+
+      /* 🆕 Callback called by Google script */
+      function handleCredentialResponse(response) {
+        const data = parseJwt(response.credential);
+        // console.log(data); // шалгах бол
+
+        const name = data.name || "Нэр алга";
+        const email = data.email || "";
+        const picture = data.picture || "";
+
+        els.userName.textContent = name;
+        els.userEmail.textContent = email;
+        els.userPicture.src = picture;
+        els.userPicture.classList.toggle("hidden", !picture);
+
+        els.userCard.classList.remove("hidden");
+      }
+
+      /* -------- Existing weather JS -------- */
       const API_KEY = "298b95adcad4e9a5551a6bdc3d62cc7e",
         API_URL = "https://api.openweathermap.org/data/2.5/weather";
       let units = "metric";
@@ -320,7 +410,14 @@
         cityInput: document.getElementById("cityInput"),
         btnMetric: document.getElementById("btnMetric"),
         btnImperial: document.getElementById("btnImperial"),
+
+        // 🆕 user info elements
+        userCard: document.getElementById("userCard"),
+        userName: document.getElementById("userName"),
+        userEmail: document.getElementById("userEmail"),
+        userPicture: document.getElementById("userPicture"),
       };
+
       function setStatus(t, o = false) {
         els.status.textContent = t;
         els.status.classList.toggle("ok", o);
