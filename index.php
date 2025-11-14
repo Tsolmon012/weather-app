@@ -1,3 +1,83 @@
+<?php
+session_start();
+require __DIR__ . '/config.php';
+
+$errors = [];
+$success = "";
+
+// Form-уудыг боловсруулах
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+
+    // Гарах
+    if ($action === 'logout') {
+        session_unset();
+        session_destroy();
+        header('Location: index.php');
+        exit;
+    }
+
+    // Бүртгүүлэх
+    if ($action === 'register') {
+        $last  = trim($_POST['last_name'] ?? '');
+        $first = trim($_POST['first_name'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $pass1 = $_POST['password'] ?? '';
+        $pass2 = $_POST['password_confirm'] ?? '';
+
+        if ($last === '' || $first === '' || $email === '' || $pass1 === '' || $pass2 === '') {
+            $errors[] = "Бүх талбарыг бөглөнө үү.";
+        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $errors[] = "Email буруу байна.";
+        } elseif ($pass1 !== $pass2) {
+            $errors[] = "Нууц үг хоорондоо таарахгүй байна.";
+        } else {
+            // Email аль хэдийн бүртгэлтэй эсэх
+            $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
+            $stmt->execute([$email]);
+            if ($stmt->fetch()) {
+                $errors[] = "Энэ email-ээр аль хэдийн бүртгэгдсэн байна.";
+            } else {
+                $hash = password_hash($pass1, PASSWORD_DEFAULT);
+                $stmt = $pdo->prepare(
+                    "INSERT INTO users (last_name, first_name, email, password_hash)
+                     VALUES (?, ?, ?, ?)"
+                );
+                $stmt->execute([$last, $first, $email, $hash]);
+
+                $_SESSION['user_id'] = $pdo->lastInsertId();
+                $_SESSION['user_name'] = $first . " " . $last;
+                $success = "Амжилттай бүртгэгдлээ, тавтай морил.";
+            }
+        }
+    }
+
+    // Нэвтрэх
+    if ($action === 'login') {
+        $email = trim($_POST['email'] ?? '');
+        $pass  = $_POST['password'] ?? '';
+
+        if ($email === '' || $pass === '') {
+            $errors[] = "Email болон нууц үгээ бөглөнө үү.";
+        } else {
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
+            $stmt->execute([$email]);
+            $user = $stmt->fetch();
+
+            if (!$user || !password_verify($pass, $user['password_hash'])) {
+                $errors[] = "Нэвтрэх мэдээлэл буруу байна.";
+            } else {
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['user_name'] = $user['first_name'] . " " . $user['last_name'];
+                $success = "Амжилттай нэвтэрлээ.";
+            }
+        }
+    }
+}
+
+$loggedIn = isset($_SESSION['user_id']);
+$userName = $_SESSION['user_name'] ?? '';
+?>
 <!DOCTYPE html>
 <html lang="mn">
   <head>
@@ -27,11 +107,8 @@
         --ok: #3cd287;
         --radius: 18px;
       }
-      * {
-        box-sizing: border-box;
-      }
-      html,
-      body {
+      * { box-sizing: border-box; }
+      html, body {
         margin: 0;
         padding: 0;
         background: var(--bg);
@@ -92,10 +169,7 @@
         background: rgba(255, 255, 255, 0.03);
         border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
       }
-      .row {
-        display: flex;
-        gap: 8px;
-      }
+      .row { display: flex; gap: 8px; }
       input[type="text"] {
         width: 100%;
         padding: 12px;
@@ -116,13 +190,10 @@
         color: var(--text);
         font-weight: 600;
         touch-action: manipulation;
+        cursor: pointer;
       }
-      button:active {
-        transform: translateY(1px);
-      }
-      .ghost {
-        background: transparent;
-      }
+      button:active { transform: translateY(1px); }
+      .ghost { background: transparent; }
       .pill {
         display: inline-flex;
         align-items: center;
@@ -162,9 +233,7 @@
         margin-top: 6px;
         font-size: 14px;
       }
-      .city {
-        font-weight: 700;
-      }
+      .city { font-weight: 700; }
       .grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -179,40 +248,24 @@
         padding: 10px;
         border-radius: 12px;
       }
-      .metric b {
-        font-size: 18px;
-      }
+      .metric b { font-size: 18px; }
       .footer {
         color: var(--muted);
         font-size: 12px;
         text-align: center;
         padding: 0 18px 16px;
       }
-      .hidden {
-        display: none !important;
-      }
-      .err {
-        color: var(--warn);
-        font-weight: 600;
-      }
-      .ok {
-        color: var(--ok);
-        font-weight: 600;
-      }
-      .units {
-        display: flex;
-        gap: 6px;
-      }
-      .units button {
-        padding: 8px 10px;
-        font-size: 12px;
-      }
+      .hidden { display: none !important; }
+      .err { color: var(--warn); font-weight: 600; }
+      .ok { color: var(--ok); font-weight: 600; }
+      .units { display: flex; gap: 6px; }
+      .units button { padding: 8px 10px; font-size: 12px; }
       .active {
         border-color: var(--accent);
         box-shadow: 0 0 10px rgba(77, 163, 255, 0.4);
       }
 
-      /* 🆕 Google user info card */
+      /* Google user info card */
       .user-info {
         display: flex;
         align-items: center;
@@ -227,13 +280,21 @@
         border-radius: 50%;
       }
 
+      /* Login errors/success */
+      .errors { color: var(--warn); font-size: 13px; margin-bottom: 8px; }
+      .success { color: var(--ok); font-size: 13px; margin-bottom: 8px; }
+      .user-row {
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:8px;
+      }
+      .user-name { font-weight:600; }
+      .logout-btn { background:#ff736a; }
+
       @media (min-width: 480px) {
-        header h1 {
-          font-size: 20px;
-        }
-        .temp {
-          font-size: 64px;
-        }
+        header h1 { font-size: 20px; }
+        .temp { font-size: 64px; }
       }
     </style>
   </head>
@@ -251,9 +312,71 @@
         </header>
 
         <div class="content">
+
+          <!-- MySQL Login/Register card -->
+          <div class="card">
+            <h2 style="margin:0 0 8px;font-size:16px;">Хэрэглэгчийн нэвтрэлт (MySQL)</h2>
+
+            <?php if ($errors): ?>
+              <div class="errors">
+                <?php foreach ($errors as $e) echo htmlspecialchars($e) . "<br>"; ?>
+              </div>
+            <?php endif; ?>
+
+            <?php if ($success): ?>
+              <div class="success"><?= htmlspecialchars($success) ?></div>
+            <?php endif; ?>
+
+            <?php if (!$loggedIn): ?>
+              <h3 style="margin:8px 0 4px;font-size:14px;">Нэвтрэх</h3>
+              <form method="post" style="margin-bottom:10px;">
+                <input type="hidden" name="action" value="login">
+                <label style="font-size:13px;">Email</label>
+                <input type="email" name="email" required>
+                <label style="font-size:13px;">Нууц үг</label>
+                <input type="password" name="password" required>
+                <button type="submit" style="margin-top:8px;">Нэвтрэх</button>
+              </form>
+
+              <hr style="margin:10px 0; border-color:rgba(255,255,255,.08);">
+
+              <h3 style="margin:8px 0 4px;font-size:14px;">Бүртгүүлэх</h3>
+              <form method="post">
+                <input type="hidden" name="action" value="register">
+                <label style="font-size:13px;">Овог</label>
+                <input type="text" name="last_name" required>
+                <label style="font-size:13px;">Нэр</label>
+                <input type="text" name="first_name" required>
+                <label style="font-size:13px;">Email</label>
+                <input type="email" name="email" required>
+                <label style="font-size:13px;">Нууц үг</label>
+                <input type="password" name="password" required>
+                <label style="font-size:13px;">Нууц үг давтах</label>
+                <input type="password" name="password_confirm" required>
+                <button type="submit" style="margin-top:8px;">Бүртгүүлэх</button>
+              </form>
+              <p style="font-size:11px;color:var(--muted);margin:6px 0 0;">
+                * Энэ хэсэг MySQL өгөгдлийн сантай холбогдож байна.
+              </p>
+            <?php else: ?>
+              <div class="user-row">
+                <div>
+                  <div class="user-name"><?= htmlspecialchars($userName) ?></div>
+                  <div style="font-size:12px;color:var(--muted);">DB-р нэвтэрсэн хэрэглэгч</div>
+                </div>
+                <form method="post">
+                  <input type="hidden" name="action" value="logout">
+                  <button type="submit" class="logout-btn">Гарах</button>
+                </form>
+              </div>
+            <?php endif; ?>
+          </div>
+
+          <!-- Google Sign-In section -->
           <div class="card">
             <h2 style="margin: 0 0 8px; font-size: 16px">Google нэвтрэлт</h2>
 
+            <!-- Google Sign-In button -->
             <div
               id="g_id_onload"
               data-client_id="505268840576-choj3sajmanf6p3enfhr62mrd96les3r.apps.googleusercontent.com"
@@ -271,6 +394,7 @@
               data-logo_alignment="left"
             ></div>
 
+            <!-- User info -->
             <div id="userCard" class="user-info hidden">
               <img id="userPicture" alt="User" />
               <div>
@@ -279,6 +403,7 @@
               </div>
             </div>
           </div>
+          <!-- Google Sign-In section end -->
 
           <div id="status" class="pill">Бэлэн.</div>
 
@@ -352,6 +477,7 @@
     </div>
 
     <script>
+      /* Google token parse helper */
       function parseJwt(token) {
         const base64Url = token.split(".")[1];
         const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
@@ -366,12 +492,13 @@
         return JSON.parse(jsonPayload);
       }
 
+      /* Callback called by Google script */
       function handleCredentialResponse(response) {
         const data = parseJwt(response.credential);
 
-        const name = data.name;
-        const email = data.email;
-        const picture = data.picture;
+        const name = data.name || "Нэр алга";
+        const email = data.email || "";
+        const picture = data.picture || "";
 
         els.userName.textContent = name;
         els.userEmail.textContent = email;
@@ -381,7 +508,7 @@
         els.userCard.classList.remove("hidden");
       }
 
-      /* -------- Existing weather JS -------- */
+      /* -------- Weather JS -------- */
       const API_KEY = "298b95adcad4e9a5551a6bdc3d62cc7e",
         API_URL = "https://api.openweathermap.org/data/2.5/weather";
       let units = "metric";
@@ -404,7 +531,7 @@
         btnMetric: document.getElementById("btnMetric"),
         btnImperial: document.getElementById("btnImperial"),
 
-        // 🆕 user info elements
+        // Google user info elements
         userCard: document.getElementById("userCard"),
         userName: document.getElementById("userName"),
         userEmail: document.getElementById("userEmail"),
